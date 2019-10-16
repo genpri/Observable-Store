@@ -1,29 +1,6 @@
 import { BehaviorSubject, Observable } from 'rxjs';
-import { ClonerService } from './utilities/cloner.service';
-
-export interface ObservableStoreSettings {
-    trackStateHistory?: boolean;
-    logStateChanges?: boolean;
-    includeStateChangesOnSubscribe?: boolean;
-    stateSliceSelector?: (state: any) => any;
-}
-
-export interface CurrentStoreState {
-    state: any;
-    stateChanges: any;
-}
-
-// static objects
-const clonerService = new ClonerService();
-let storeState: Readonly<any> =  null;
-let stateHistory: any[] = [];
-const settingsDefaults: ObservableStoreSettings = { 
-    trackStateHistory: false, 
-    logStateChanges: false,
-    includeStateChangesOnSubscribe: false,
-    stateSliceSelector: null
-};
-const globalStateDispatcher = new BehaviorSubject<any>(null);
+import { ObservableStoreSettings, StateHistory, ObservableStoreGlobalSettings } from './interfaces';
+import ObservableStoreBase from './observable-store-base';
 
 /**
  * Executes a function on `state` and returns a version of T
@@ -31,40 +8,70 @@ const globalStateDispatcher = new BehaviorSubject<any>(null);
  */
 export type stateFunc<T> = (state: T) => Partial<T>;
 
+/**
+ * Core functionality for ObservableStore
+ * providing getState(), setState() and additional functionality
+ */
 export class ObservableStore<T> {
     // Not a fan of using _ for private fields in TypeScript, but since 
-    // some may use this as pure ES6 I'm going with _ for the private fields.
-    // stateChanged is for changes to a slice of state managed by a particular service
-    public stateChanged: Observable<any>;
-    public stateHistory: any[];
-    public globalStateChanged: Observable<any>;
+    // some may use this as pure ES2015 I'm going with _ for the private fields.
+    // private _stateDispatcher$ = new BehaviorSubject<T>(null);
+    private _settings: ObservableStoreSettings;
+    private _stateDispatcher$ = new BehaviorSubject<T>(null);
 
-    private _stateDispatcher = new BehaviorSubject<any>(null);
-    private _clonerService: ClonerService;
-    private _settings: ObservableStoreSettings
-
-    constructor(settings: ObservableStoreSettings) {
-        this._settings = Object.assign({}, settingsDefaults, settings);
-        this._clonerService = clonerService;
-        
-        this.stateChanged = this._stateDispatcher.asObservable();
-        this.stateHistory = stateHistory;
-        this.globalStateChanged = globalStateDispatcher.asObservable();
+    stateChanged: Observable<T>;
+    globalStateChanged: Observable<any>;
+    
+    get stateHistory(): StateHistory<T>[] {
+        return ObservableStoreBase.stateHistory;
     }
 
-    protected setState(state: Partial<T> | stateFunc<T> , action?: string, dispatchState: boolean = true) : T { 
+    constructor(settings: ObservableStoreSettings) {
+        this._settings = { ...ObservableStoreBase.settingsDefaults, ...settings, ...ObservableStoreBase.globalSettings };        
+        this.stateChanged = this._stateDispatcher$.asObservable();
+        this.globalStateChanged = ObservableStoreBase.globalStateDispatcher.asObservable();
+    }
+
+    static get globalSettings() {
+        return ObservableStoreBase.globalSettings;
+    }
+
+    static set globalSettings(settings: ObservableStoreGlobalSettings) {
+        // ObservableStore['isTesting'] used so that unit tests can set globalSettings 
+        // multiple times during a suite of tests
+        if (settings && (ObservableStore['isTesting'] || !ObservableStoreBase.globalSettings)) {
+            ObservableStoreBase.globalSettings = settings;
+        }
+        else if (!settings) {
+            throw new Error('Please provide the global settings you would like to apply to Observable Store');
+        }
+        else if (settings && ObservableStoreBase.globalSettings) {
+            throw new Error('Observable Store global settings may only be set once.');
+        }
+    }
+
+    protected getState() : T {
+        const stateOrSlice = this._getStateOrSlice();
+        return stateOrSlice;
+    }
+
+    protected setState(state: Partial<T> | stateFunc<T>, 
+        action?: string, 
+        dispatchState: boolean = true) : T { 
+
         // Needed for tracking below
         const previousState = this.getState();
 
-        if (typeof state === 'function') {
-            const newState = state(this.getState());
-            this._updateState(newState);
-        }
-        else if (typeof state === 'object') {
-            this._updateState(state);
-        }
-        else {
-            throw Error('Pass an object or a function for the state parameter when calling setState().');
+        switch (typeof state) {
+            case 'function':
+                const newState = state(this.getState());
+                this._updateState(newState);
+                break;
+            case 'object':
+                this._updateState(state);
+                break;
+            default:
+                throw Error('Pass an object or a function for the state parameter when calling setState().');
         }
         
         if (dispatchState) {
@@ -72,10 +79,10 @@ export class ObservableStore<T> {
         }
 
         if (this._settings.trackStateHistory) {
-            this.stateHistory.push({ 
+            ObservableStoreBase.stateHistory.push({ 
                 action, 
                 beginState: previousState, 
-                endState: this._clonerService.deepClone(this.getState()) 
+                endState: this.getState() 
             });
         }
 
@@ -87,22 +94,26 @@ export class ObservableStore<T> {
         return this.getState();
     }
 
-    protected getState() : T {
-        const stateOrSlice = this._getStateOrSlice(storeState);
-        return this._clonerService.deepClone(stateOrSlice) as T;
-    }
-
     protected logStateAction(state: any, action: string) {
         if (this._settings.trackStateHistory) {
-            this.stateHistory.push({ action, state: this._clonerService.deepClone(state) });
+            ObservableStoreBase.stateHistory.push({ 
+                action, 
+                beginState: this.getState(), 
+                endState: ObservableStoreBase.deepClone(state) 
+            });
         }
     }
 
-    private _updateState(state: Partial<T>) {
-        storeState = (state) ? Object.assign({}, storeState, state) : null;
+    protected resetStateHistory() {
+        ObservableStoreBase.stateHistory = [];
     }
 
-    private _getStateOrSlice(state : Readonly<any>): Readonly<any> {
+    private _updateState(state: Partial<T>) {
+        ObservableStoreBase.setStoreState(state);
+    }
+
+    private _getStateOrSlice(): Readonly<Partial<T>> {
+        const storeState = ObservableStoreBase.getStoreState();
         if (this._settings.stateSliceSelector) {
             return this._settings.stateSliceSelector(storeState);
         }
@@ -110,17 +121,22 @@ export class ObservableStore<T> {
     }
 
     private _dispatchState(stateChanges: T) {
-        const stateOrSlice = this._getStateOrSlice(storeState);
-        const clonedStateOrSlice = this._clonerService.deepClone(stateOrSlice);
-        const clonedGlobalState = this._clonerService.deepClone(storeState);
+        const stateOrSlice = this._getStateOrSlice();
+        
+        // Get store state or slice of state
+        const clonedStateOrSlice = stateOrSlice;
+
+        //  Get full store state
+        const clonedGlobalState = ObservableStoreBase.getStoreState();
 
         if (this._settings.includeStateChangesOnSubscribe) {
-            this._stateDispatcher.next({ state: clonedStateOrSlice, stateChanges });
-            globalStateDispatcher.next({ state: clonedGlobalState, stateChanges });
+            this._stateDispatcher$.next({ state: clonedStateOrSlice, stateChanges } as any);
+            ObservableStoreBase.globalStateDispatcher.next({ state: clonedGlobalState, stateChanges });
         }
         else {
-            this._stateDispatcher.next(clonedStateOrSlice);
-            globalStateDispatcher.next(clonedGlobalState);
+            this._stateDispatcher$.next(clonedStateOrSlice);
+            ObservableStoreBase.globalStateDispatcher.next(clonedGlobalState);
         }
     }
+
 }

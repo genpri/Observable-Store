@@ -1,0 +1,6 @@
+<h1>Customers (in Child Component)</h1>
+<ul *ngIf="storeState$ | async as state">
+  <li *ngFor="let customer of state.customers">
+    {{ customer.firstName }} {{ customer.lastName }}
+  </li>
+</ul>
