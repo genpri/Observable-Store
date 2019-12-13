@@ -2,8 +2,6 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { of, Observable } from 'rxjs';
 import { map, catchError, switchMap } from 'rxjs/operators';
-// The following is for testing only
-// import { ObservableStore } from '../../../../../src/observable-store';
 import { ObservableStore } from '@codewithdan/observable-store';
 
 import { Customer } from '../core/model';
@@ -79,6 +77,7 @@ export class CustomersService extends ObservableStore<StoreState> {
                     // update local store with updated customer data
                     // not required of course unless the store cache is needed 
                     // (it is for the customer list component in this example)
+                    this.setState( { customer }, CustomersStoreActions.UpdateCustomer);
                     return this.fetchCustomers();
                 }),
                 catchError(this.handleError)
@@ -93,7 +92,7 @@ export class CustomersService extends ObservableStore<StoreState> {
                     // not required of course unless the store cache is needed 
                     // (it is for the customer list component in this example)  
                     const customers = this.deleteLocalCustomer(id);
-                    this.setState({ customers }, 'delete_customer');                 
+                    this.setState({ customers, customer: null }, CustomersStoreActions.DeleteCustomer);                 
                     return this.fetchCustomers();
                 }),
                 catchError(this.handleError)
@@ -122,6 +121,8 @@ export class CustomersService extends ObservableStore<StoreState> {
 }
 
 export enum CustomersStoreActions {
-    GetCustomers = 'get_customers',
-    GetCustomer = 'get_customer'
+    GetCustomers = 'GET_CUSTOMERS',
+    GetCustomer = 'GET_CUSTOMER',
+    UpdateCustomer = 'UPDATE_CUSTOMER',
+    DeleteCustomer = 'DELETE_CUSTOMER'
 }

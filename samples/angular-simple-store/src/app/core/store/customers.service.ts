@@ -76,7 +76,7 @@ export class CustomersService extends ObservableStore<StoreState> {
       return { customers };
     }, CustomersStoreActions.SortCustomers);
 
-    console.log(this.stateHistory);
+    console.log('State History:', this.stateHistory);
   }
 
 }
@@ -87,9 +87,9 @@ export interface StoreState {
 }
 
 export enum CustomersStoreActions {
-  InitializeState = 'initialize_state',
-  AddCustomer = 'add_customer',
-  RemoveCustomer = 'remove_customer',
-  GetCustomers = 'get_customers',
-  SortCustomers = 'sort_customers'
+  InitializeState = 'INITIALIZE_STATE',
+  AddCustomer = 'ADD_CUSTOMER',
+  RemoveCustomer = 'REMOVE_CUSTOMER',
+  GetCustomers = 'GET_CUSTOMERS',
+  SortCustomers = 'SORT_CUSTOMERS'
 }

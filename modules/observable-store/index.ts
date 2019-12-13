@@ -1,3 +1,3 @@
 export { ObservableStore } from './observable-store';
 export { ObservableStoreSettings, ObservableStoreGlobalSettings, 
-        StateWithPropertyChanges, StateHistory, StateSliceSelector } from './interfaces';
+        StateWithPropertyChanges, StateHistory, StateSliceSelector, ObservableStoreExtension } from './interfaces';
