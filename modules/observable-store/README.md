@@ -546,7 +546,7 @@ See the `samples` folder in the Github repo for examples of using Observable Sto
 
 ### <a name="vue"></a>Using Observable Store with Vue.js
 
-Coming Soon...
+....
 
 ### <a name="api"></a>Store API
 
@@ -554,23 +554,27 @@ Observable Store provides a simple API that can be used to get/set state, subscr
 
  Functions                                      | Description
 | ----------------------------------------------| -----------------------------------------------------
-| `static addExtension(extension: ObservableStoreExtension)`                              | Used to add an extension into ObservableStore. The extension must implement the `ObservableStoreExtension` interface. 
-| `dispatchState(stateChanges: Partial<T>, dispatchGlobalState: boolean = true) : T`                              | Dispatch the store's state without modifying the store state. Service state can be dispatched as well as the global store state. If `dispatchGlobalState` is false then global state will not be dispatched to subscribers (defaults to `true`). 
-| `getState() : T`                              | Retrieve store's state. If using TypeScript (optional) then the state type defined when the store was created will be returned rather than `any`.                           
+| `dispatchState(stateChanges: Partial<T>, dispatchGlobalState: boolean = true) : T`                              | Dispatch the store's state without modifying the  state. Service state can be dispatched as well as the global store state. If `dispatchGlobalState` is false then global state will not be dispatched to subscribers (defaults to `true`). 
+| `getState(deepCloneReturnedState: boolean = true) : T`                              | Retrieve store's state. If using TypeScript (optional) then the state type defined when the store was created will be returned rather than `any`. The deepCloneReturnedState boolean parameter (default is true) can be used to determine if the returned state will be deep cloned or not. If set to false, a reference to the store state will be returned and it's up to the user to ensure the state isn't change from outside the store. Setting it to false can be useful in cases where read-only cached data is stored and must be retrieved as quickly as possible without any cloning.
+| `getStateProperty<TProp>(propertyName: string, deepCloneReturnedState: boolean = true) : TProp`| Retrieve a specific property from the store's state which can be more efficient than getState() since only the defined property value will be returned (and cloned) rather than the entire store value. If using TypeScript (optional) then the generic property type used with the function call will be the return type.                           
 | `logStateAction(state: any, action: string): void` | Add a custom state value and action into the state history. Assumes `trackStateHistory` setting was set on store or using the global settings.
 | `resetStateHistory(): void`                   | Reset the store's state history to an empty array.
-| `setState(state: T, action: string) : T`      | Set store state. Pass the state to be updated as well as the action that is occuring. The state value can be a function (see example below). The latest store state is returned.
+| `setState(state: T, action: string, dispatchState: boolean = true, deepCloneState: boolean = true) : T`      | Set the store state. Pass the state to be updated as well as the action that is occuring. The state value can be a function (see example below). The latest store state is returned and any store subscribers are notified of the state change. The dispatchState parameter can be set to `false` if you do not want to send state change notifications to subscribers. The deepCloneReturnedState boolean parameter (default is true) can be used to determine if the state will be deep cloned before it is added to the store. Setting it to false can be useful in cases where read-only cached data is stored and must added to the store as quickly as possible without any cloning.
+| `static addExtension(extension: ObservableStoreExtension)`                              | Used to add an extension into ObservableStore. The extension must implement the `ObservableStoreExtension` interface. 
+| `static clearState(): void`| Clear/null the store state across all services that use it.
+| `static initializeState(state: any)`                              | Used to initialize the store's state. An error will be thrown if this is called and store state already exists so this should be set when the application first loads. No notifications are sent out to store subscribers when the store state is initialized.
+| `static resetState(state, dispatchState: boolean = true)`                              | Used to reset the state of the store to a desired value for all services that derive from ObservableStore<T>. A state change notification and global state change notification is sent out to subscribers if the dispatchState parameter is true (the default value).
 <br>
 
  Properties                                     | Description
 | ----------------------------------------------| -----------------------------------------------------
-| `static allStoreServices: any[]`| Provides access to all services that interact with ObservableStore. Useful for extensions that need to be able to access a specific service.
-| `static globalSettings: ObservableStoreGlobalSettings`| get/set global settings throughout the application for ObservableStore. See the [Observable Store Settings](#settings) below for additional information. Note that global settings can only be set once as the application first loads.
 | `globalStateChanged: Observable<any>`         | Subscribe to global store changes i.e. changes in any slice of state of the store. The global store may consist of 'n' slices of state each managed by a particular service. This property notifies of a change in any of the 'n' slices of state. Returns an RxJS Observable containing the current store state. 
 | `globalStateWithPropertyChanges: Observable<StateWithPropertyChanges<any>>`         | Subscribe to global store changes i.e. changes in any slice of state of the store and also include the properties that changed as well. The global store may consist of 'n' slices of state each managed by a particular service. This property notifies of a change in any of the 'n' slices of state. Upon subscribing to `globalStateWithPropertyChanges` you will get back an object containing `state` (which has the current store state) and `stateChanges` (which has the individual properties/data that were changed in the store).
 | `stateChanged: Observable<T>`                 | Subscribe to store changes in the particlar slice of state updated by a Service. If the store contains 'n' slices of state each being managed by one of 'n' services, then changes in any of the other slices of state will not generate values in the stateChanged stream. Returns an RxJS Observable containing the current store state (or a specific slice of state if a stateSliceSelector has been specified). 
 | `stateWithPropertyChanges: Observable<StateWithPropertyChanges<T>>`     | Subscribe to store changes in the particlar slice of state updated by a Service and also include the properties that changed as well. Upon subscribing to `stateWithPropertyChanges` you will get back an object containing `state` (which has the current slice of store state) and `stateChanges` (which has the individual properties/data that were changed in the store).
 | `stateHistory: StateHistory`                  | Retrieve state history. Assumes `trackStateHistory` setting was set on the store.
+| `static allStoreServices: any[]`| Provides access to all services that interact with ObservableStore. Useful for extensions that need to be able to access a specific service.
+| `static globalSettings: ObservableStoreGlobalSettings`| get/set global settings throughout the application for ObservableStore. See the [Observable Store Settings](#settings) below for additional information. Note that global settings can only be set once as the application first loads.
 <br>
 
 Note that TypeScript types are used to describe parameters and return types above. TypeScript is not required to use Observable Store though.
@@ -630,65 +634,16 @@ export class CustomersService extends ObservableStore<StoreState> {
 
 #### <a name="globalSettings"></a>Global Store Settings
 
-You can set the following Observable Store settings globally for the entire application if desired. For details, view the [Observable Store Settings](#settings) section. This allows you to define the settings once and all services that extend Observable Store will automatically pick these settings up. You can override these properties (except the isProduction property) at the service level as well which is nice when you want a particular service to have more logging (as an example) while other services don't.
+You can set the following Observable Store settings globally for the entire application if desired. For details, view the [Observable Store Settings](#settings) section. This allows you to define the settings once and all services that extend Observable Store will automatically pick these settings up. You can override these properties at the service level as well which is nice when you want a particular service to have more logging (as an example) while other services don't.
 
 * `trackStateHistory`
 * `logStateChanges`
 * `includeStateChangesOnSubscribe` [DEPRECATED]
-* `isProduction`
 
 Global store settings are defined ONCE when the application **first initializes** and BEFORE the store has been used:
 
 ``` javascript
 ObservableStore.globalSettings = {  /* pass settings here */ };
-```
-
-##### <a name="isProduction"></a>The isProduction Property
-
-When `isProduction` is `false`, cloning will be used when calling `getState()` or `setState()` in order to enforce immutability of the store state. When `isProduction` is `true`, cloning will not be used in order to enhance performance. This works since any immutability issues would've been caught in development mode (other store solutions out there use this technique as well). While setting the `isProduction` property is optional, with large amounts of store data the cloning that is used could *potentially* impact performance so it's important to be aware of this property.
-
-Example of using `isProduction` with **Angular** in `main.ts`:
-
-``` typescript
-// main.ts
-import { enableProdMode } from '@angular/core';
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { ObservableStore } from '@codewithdan/observable-store';
-
-import { AppModule } from './app/app.module';
-import { environment } from './environments/environment';
-
-if (environment.production) {
-  enableProdMode();
-}
-
-// Set ObservableStore globalSettings here since 
-// it'll be called before the rest of the app loads
-ObservableStore.globalSettings = { 
-    isProduction: environment.production 
-};
-
-platformBrowserDynamic().bootstrapModule(AppModule)
-  .catch(err => console.log(err));
-```
-
-Example of using `isProduction` with **React** in `index.js`:
-
-``` javascript
-// index.js
-import React from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
-import App from './App';
-import * as serviceWorker from './serviceWorker';
-
-// Set ObservableStore globalSettings here since 
-// it'll be called before the rest of the app loads
-ObservableStore.globalSettings = { 
-    isProduction: process.env.NODE_ENV === 'production'
-};
-
-ReactDOM.render(<App />, document.getElementById('root'));
 ```
 
 ### <a name="extensions"></a>Extensions
@@ -700,6 +655,10 @@ Observable Store now supports extensions. These can be added when the applicatio
 The first built-in extension adds [Redux DevTools](http://extension.remotedev.io/) integration into applications that use Observable Store. The extension can be found in the `@codewithdan/observable-store-extensions` package.
 
 ![Integrating the Redux DevTools](images/reduxDevTools.png)
+
+**Note about Angular 9/Ivy and the Redux DevTools Support**
+
+While the [code is in place](https://github.com/DanWahlin/Observable-Store/blob/master/modules/observable-store-extensions/angular/angular-devtools-extension.ts) to support it, The Observable Store Redux DevTools currently do not work with Angular 9 and Ivy. Once the [`findProviders()` API](https://github.com/angular/angular/blob/cd9ae66b357bd4b5f97aa60cea38e48acb015325/packages/core/src/testability/testability.ts#L221) is fully implemented and released by Angular then support will be finalized for the Redux DevTools.
 
 **Note about the `__devTools` Store Property:** 
 
@@ -865,13 +824,13 @@ Internal type additions and tests contributed by @elAndyG (https://github.com/el
 
 1. Added more strongly-typed information for `stateChanged` and the overall API to provide better code help while using Observable Store.
 1. RxJS is now a peer dependency (RxJS 6.4.0 or higher is required). This avoids reported versioning issues that have come up when a project already has RxJS in it. The 1.x version of Observable Store added RxJS as a dependency. Starting with 2.0.0 this is no longer the case.
-1. Added an `ObservableStore.globalSettings` property to allow store settings to be defined once if desired for an entire application rather than per service that uses the store. The global settings also support an `isProduction` property that controls if store state cloning is used (see the next item for more details).
-1. `getState()` and `setState()` now clone when the global settings `isProduction` property is false (`ObservableStore.globalSettings = { isProduction: false }`). When running in production mode no cloning is used in order to enhance performance since mutability issues would've been detected at development time. This technique is used with other store solutions as well.
+1. Added an `ObservableStore.globalSettings` property to allow store settings to be defined once if desired for an entire application rather than per service that uses the store. 
+1. `getState()` and `setState()` now clone when the global settings `isProduction` property is false (`ObservableStore.globalSettings = { isProduction: false }`). When running in production mode no cloning is used in order to enhance performance since mutability issues would've been detected at development time. This technique is used with other store solutions as well. NOTE: isProduction is no longer used. See 2.0.1 below.
 1. Changed TypeScript module compilation to CommonJS instead of ES2015 to aid with testing scenarios (such as Jest) where the project doesn't automatically handle ES2015 module conventions without extra configuration.
 
 #### 2.0.1 - October 14, 2019
 
-With this version Observable Store won't clone when adding state via `setState()` if `isProduction` is `true` for `globalSettings`. It will clone when `getState()` is called though even when `isProduction` is set in this version. Otherwise certain change detection scenarios won't work correctly in various libraries/frameworks. The same behavior in the original 2.0 release of cloning during `setState()` and `getState()` calls still applies. This change only affects production scenarios.
+Due to edge cases cloning is used in development and production. The `isProduction` property is left in so builds are not broken, but currently isn't used.
 
 #### 2.1.0 - October 24, 2019
 
@@ -914,6 +873,47 @@ New APIs:
 Minor updates to the Observable Store docs. Fixed a bug in the Redux DevTools extension that would throw an error when the extension wasn't installed or available. Updated readme to discuss how to disable extensions for production scenarios.
 
 Thanks to <a href="https://github.com/riscie" target="_blank">Matthias Langhard</a> for the feedback and discussion on these changes.
+
+#### 2.2.5 - February 26, 2020
+
+- Added `ObservableStore.initializeState()` API. 
+- Refactored unit tests.
+
+#### 2.2.6 - February 29, 2020
+
+- Added `ObservableStore.resetState()` API.
+- Added unit tests for `resetState()`.
+
+Feedback from <a href="https://github.com/svehera" target="_blank">Severgyn</a> and <a href="https://github.com/LuizFilipeMedeira" target="_blank">Luiz Filipe</a> influenced this feature. Thanks folks!
+
+#### 2.2.7 - March 6, 2020
+
+- Fixed bug where Redux DevTools code for Angular v8 or lower was also calling code intended for Angular v9 (which is still a work in progress as noted in the Redux DevTools section above).
+
+Thanks to <a href="https://github.com/trentsteel84" target="_blank">trentsteel84</a> for reporting the issue.
+
+##### 2.2.8 - April 2, 2020
+
+- All calls to getState() and setState() clone data now due to edge issues that can arise otherwise with external references. Previously, it would
+selectively clone based on dev or prod. All functions that get/set state now provide an optional `deepClone` type of boolean property that can be used in cases where
+it's not desirable to clone state (large amount of data being added to the store for caching for example).
+
+- Added `ObservableStore.clearState()` API to null the store across all services that use it.
+- Added `getStateProperty<T>(propName: string)` to retrieve a specific property from the store versus retrieving the entire store
+as `getState()` does.
+
+##### 2.2.9 - May 5, 2020
+
+Added support for cloning Map and Set objects in the interal cloner service used by Observable Store. Thanks to <a href="https://github.com/chrisjandrade" target="_blank">Chris Andrade</a> for the initial contribution. 
+
+##### 2.2.10 - May 20, 2020
+
+External APIs supported turning off cloning but internal APIs still cloned which isn't optimal for people storing a lot of data in the store. Thanks to 
+ <a href="https://github.com/Steve-RW" target="_blank">Steve-RW</a> for asking about it and for the PR that fixed it.
+
+##### 2.2.11 - May 21, 2020
+
+Updates to documentation.
 
 ### Building the Project
 

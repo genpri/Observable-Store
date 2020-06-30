@@ -22,6 +22,14 @@ export class ClonerService {
                     result = this.newRegExp(value);
                     return result;
                 }
+                else if (value instanceof Map) {
+                    result = new Map(value);
+                    return result;
+                }
+                else if (value instanceof Set) {
+                    result = new Set(value);
+                    return result;
+                }
 
                 result = JSON.parse(JSON.stringify(value));
                 this.fixTypes(value, result);
@@ -45,6 +53,12 @@ export class ClonerService {
                 }
                 else if (originalValue instanceof RegExp) {
                     copy[key] = this.newRegExp(originalValue);
+                }
+                else if (originalValue instanceof Map) {
+                    copy[key] = new Map(originalValue);
+                }
+                else if (originalValue instanceof Set) {
+                    copy[key] = new Set(originalValue);
                 }
                 else if (originalValue == null) {
                     copy[key] = originalValue;

@@ -106,32 +106,89 @@ export class ObservableStore<T> {
     }
 
     /**
-     * Retrieve store's state. If using TypeScript (optional) then the state type defined when the store 
-     * was created will be returned rather than `any`.
+     * Used to initialize the store's starting state. An error will be thrown if this is called and store state already exists. 
+     * No notifications are sent out when the store state is initialized by calling initializeStoreState().
      */
-    protected getState() : T {
-        return this._getStateOrSlice();
+    static initializeState(state: any) {
+        ObservableStoreBase.initializeState(state);
+    }
+
+    /**
+     * Used to reset the state of the store to a desired value for all services that derive 
+     * from ObservableStore<T> to a desired value. 
+     * A state change notification and global state change notification is sent out to subscribers if the dispatchState parameter is true (the default value).
+     */
+    static resetState(state: any, dispatchState: boolean = true) {
+        ObservableStoreBase.setStoreState(state);
+        if (dispatchState) {
+            ObservableStore.dispatchToAllServices(state);
+        }
+    }
+
+    /**
+     * Clear/null the store state for all services that use it.
+     */
+    static clearState(dispatchState: boolean = true) {
+        ObservableStoreBase.clearStoreState();
+        if (dispatchState) {
+            ObservableStore.dispatchToAllServices(null);
+        }
+    }
+
+    private static dispatchToAllServices(state: any) {
+        const services = ObservableStore.allStoreServices;
+        if (services) {
+            for (const service of services) {
+                service.dispatchState(state);
+            }
+        }
+    }
+
+    /**
+     * Retrieve store's state. If using TypeScript (optional) then the state type defined when the store 
+     * was created will be returned rather than `any`. The deepCloneReturnedState boolean parameter (default is true) can be used
+     * to determine if the returned state will be deep cloned or not. If set to false, a reference to the store state will 
+     * be returned and it's up to the user to ensure the state isn't change from outside the store. Setting it to false can be
+     * useful in cases where read-only cached data is stored and must be retrieved as quickly as possible without any cloning.
+     */
+    protected getState(deepCloneReturnedState: boolean = true) : T {
+        return this._getStateOrSlice(deepCloneReturnedState);
+    }
+
+    /**
+     * Retrieve a specific property from the store's state which can be more efficient than getState() 
+     * since only the defined property value will be returned (and cloned) rather than the entire 
+     * store value. If using TypeScript (optional) then the generic property type used with the 
+     * function call will be the return type.
+     */
+    protected getStateProperty<TProp>(propertyName: string, deepCloneReturnedState: boolean = true) : TProp {
+        return ObservableStoreBase.getStoreState(propertyName, deepCloneReturnedState);
     }
 
     /**
      * Set store state. Pass the state to be updated as well as the action that is occuring. 
      * The state value can be a function [(see example)](https://github.com/danwahlin/observable-store#store-api). 
      * The latest store state is returned.
+     * The dispatchState parameter can be set to false if you do not want to send state change notifications to subscribers.
+     * The deepCloneReturnedState boolean parameter (default is true) can be used
+     * to determine if the state will be deep cloned before it is added to the store. Setting it to false can be
+     * useful in cases where read-only cached data is stored and must added to the store as quickly as possible without any cloning.
      */
     protected setState(state: Partial<T> | stateFunc<T>, 
         action?: string, 
-        dispatchState: boolean = true) : T { 
+        dispatchState: boolean = true,
+        deepCloneState: boolean = true) : T { 
 
         // Needed for tracking below (don't move or delete)
-        const previousState = this.getState();
+        const previousState = this.getState(deepCloneState);
 
         switch (typeof state) {
             case 'function':
-                const newState = state(this.getState());
-                this._updateState(newState);
+                const newState = state(this.getState(deepCloneState));
+                this._updateState(newState, deepCloneState);
                 break;
             case 'object':
-                this._updateState(state);
+                this._updateState(state, deepCloneState);
                 break;
             default:
                 throw Error('Pass an object or a function for the state parameter when calling setState().');
@@ -141,7 +198,7 @@ export class ObservableStore<T> {
             ObservableStoreBase.stateHistory.push({ 
                 action, 
                 beginState: previousState, 
-                endState: this.getState() 
+                endState: this.getState(deepCloneState) 
             });
         }
         
@@ -154,7 +211,7 @@ export class ObservableStore<T> {
             console.log('%cSTATE CHANGED', 'font-weight: bold', '\r\nAction: ', action, caller, '\r\nState: ', state);
         }
 
-        return this.getState();
+        return this.getState(deepCloneState);
     }
 
     /**
@@ -178,12 +235,12 @@ export class ObservableStore<T> {
         ObservableStoreBase.stateHistory = [];
     }
 
-    private _updateState(state: Partial<T>) {
-        ObservableStoreBase.setStoreState(state);
+    private _updateState(state: Partial<T>, deepCloneState: boolean) {
+        ObservableStoreBase.setStoreState(state, deepCloneState);
     }
 
-    private _getStateOrSlice(): Readonly<Partial<T>> {
-        const storeState = ObservableStoreBase.getStoreState();
+    private _getStateOrSlice(deepCloneReturnedState: boolean): Readonly<Partial<T>> {
+        const storeState = ObservableStoreBase.getStoreState(null, deepCloneReturnedState);
         if (this._settings.stateSliceSelector) {
             return this._settings.stateSliceSelector(storeState);
         }
@@ -196,14 +253,14 @@ export class ObservableStore<T> {
      */
     protected dispatchState(stateChanges: Partial<T>, dispatchGlobalState: boolean = true) {       
         // Get store state or slice of state
-        const clonedStateOrSlice = this._getStateOrSlice();
+        const clonedStateOrSlice = this._getStateOrSlice(true);
 
         //  Get full store state
         const clonedGlobalState = ObservableStoreBase.getStoreState();
 
         // includeStateChangesOnSubscribe is deprecated
         if (this._settings.includeStateChangesOnSubscribe) {
-            console.log('includeStateChangesOnSubscribe is deprecated. ' +
+            console.warn('includeStateChangesOnSubscribe is deprecated. ' +
                         'Subscribe to stateChangedWithChanges or globalStateChangedWithChanges instead.');
             this._stateDispatcher$.next({ state: clonedStateOrSlice, stateChanges } as any);
             ObservableStoreBase.globalStateDispatcher.next({ state: clonedGlobalState, stateChanges });
